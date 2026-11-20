@@ -288,6 +288,7 @@ form.fm{border-radius:26px;background:#fff;border:1px solid var(--line);padding:
 .fm .cons{display:flex;gap:10px;align-items:flex-start;font-weight:600;font-size:13.5px}
 .fm .cons input{width:18px;height:18px;margin-top:2px;flex:none}
 .fm button{grid-column:1/-1;height:58px;font-size:17px}
+.fm .ok.err{background:#fff1e6;color:#8a3a00}.fm .ok.err a{font-weight:800}.okm{padding:16px;border-radius:14px;background:#dcfaee;color:#0a5a40;font-weight:700}
 .fm .ok{grid-column:1/-1;padding:14px 16px;border-radius:14px;background:#dcfaee;color:#0a5a40;font-weight:700;font-size:15px}
 @media(max-width:900px){.ct{grid-template-columns:1fr}}.ct>*,.fm>*{min-width:0}.fm input:not([type=checkbox]),.fm select,.fm textarea{width:100%}
 @media(max-width:560px){form.fm{grid-template-columns:1fr;padding:22px}.call{padding:26px}}
@@ -563,7 +564,7 @@ header{padding-top:env(safe-area-inset-top,0px)}
       <label class="full">Message (facultatif)<textarea name="m" rows="3"></textarea></label>
       <label class="full cons"><input type="checkbox" required>J’accepte d’être recontacté(e) au sujet de ma demande.</label>
       <button class="b b-or" type="submit">Envoyer ma demande<svg><use href="#ar"/></svg></button>
-      <p class="ok" id="qok" hidden>Merci. Votre messagerie s’ouvre pour envoyer la demande. Pour aller plus vite&nbsp;: 07 74 44 48 20.</p>
+      <p class="ok" id="qok" role="status" hidden></p>
     </form>
   </div>
 </div></section>
@@ -622,12 +623,29 @@ var cb=$('#cb');
 $$('[data-cb]').forEach(function(b){b.onclick=function(){cb.showModal()}});
 $$('[data-x]').forEach(function(x){x.onclick=function(){x.closest('dialog').close()}});
 $$('dialog').forEach(function(d){d.addEventListener('click',function(e){if(e.target===d)d.close()})});
-$('#cf').addEventListener('submit',function(e){e.preventDefault();location.href='mailto:'+MAIL+'?subject='+encodeURIComponent('Demande de rappel')+'&body='+encodeURIComponent('Merci de me rappeler au '+new FormData(this).get('t'));cb.close()});
+/* leads: Web3Forms email + Google Sheet / WhatsApp webhook */
+var W3F='1bf56865-c79c-4fe9-be91-835a0ef5df50';
+var HOOK='https://script.google.com/macros/s/AKfycbzcDepZLtKwKny5em1SHZ9WHH1gfKmIrmWBitXWbesGECSMDBfmr1ukB7h7hBZ-LAya/exec';
+function sendLead(f,subject){
+  var p=new URLSearchParams();p.append('subject',subject);p.append('source','Scan Hydro Fuite');for(var k in f)p.append(k,f[k]);
+  try{fetch(HOOK,{method:'POST',mode:'no-cors',body:p}).catch(function(){})}catch(e){}
+  var fd=new FormData();fd.append('access_key',W3F);fd.append('subject',subject);fd.append('from_name','Site Scan Hydro Fuite');for(var k2 in f)fd.append(k2,f[k2]);
+  return fetch('https://api.web3forms.com/submit',{method:'POST',headers:{Accept:'application/json'},body:fd}).then(function(r){return r.json()}).then(function(j){if(!j||!j.success)throw new Error('fail');return j})}
+function mailFallback(subject,body){return 'mailto:'+MAIL+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body)}
+
+$('#cf').addEventListener('submit',function(e){e.preventDefault();var f=this,b=$('button',f),tel=new FormData(f).get('t');
+  b.disabled=true;b.textContent='Envoi…';
+  sendLead({name:'',phone:tel,city:'',issue:'Demande de rappel',message:''},'Demande de rappel - Scan Hydro Fuite')
+  .then(function(){f.innerHTML='<p class="okm">Merci, c’est noté. Un technicien vous rappelle au '+tel.replace(/[<>&"]/g,'')+' au plus vite.</p>'})
+  .catch(function(){b.disabled=false;b.textContent='Être rappelé';location.href=mailFallback('Demande de rappel','Merci de me rappeler au '+tel)})});
 
 /* quote form */
-$('#qf').addEventListener('submit',function(e){e.preventDefault();var d=new FormData(this);
-  var body=['Nom : '+d.get('n'),'Téléphone : '+d.get('t'),'Ville / CP : '+d.get('v'),'Profil : '+d.get('q'),'Problème : '+d.get('p'),'','Message : '+(d.get('m')||'-')].join('\n');
-  location.href='mailto:'+MAIL+'?subject='+encodeURIComponent('Demande de devis – '+d.get('v'))+'&body='+encodeURIComponent(body);$('#qok').hidden=false});
+$('#qf').addEventListener('submit',function(e){e.preventDefault();var f=this,d=new FormData(f),b=$('button[type=submit]',f),ok=$('#qok');
+  var lead={name:d.get('n'),phone:d.get('t'),city:d.get('v'),issue:d.get('p'),message:'Profil : '+d.get('q')+(d.get('m')?'\n'+d.get('m'):'')};
+  b.disabled=true;b.firstChild.textContent='Envoi en cours… ';ok.hidden=true;
+  sendLead(lead,'Nouvelle demande de devis - Scan Hydro Fuite')
+  .then(function(){ok.className='ok';ok.textContent='Merci '+lead.name+', votre demande est bien envoyée. Un technicien vous rappelle rapidement.';ok.hidden=false;f.reset();b.disabled=false;b.firstChild.textContent='Envoyer ma demande'})
+  .catch(function(){ok.className='ok err';ok.innerHTML='L’envoi n’a pas abouti. Appelez-nous au <a href="tel:+33774444820">07 74 44 48 20</a> ou <a href="'+mailFallback('Demande de devis – '+lead.city,['Nom : '+lead.name,'Téléphone : '+lead.phone,'Ville : '+lead.city,'Problème : '+lead.issue,lead.message].join('\n'))+'">envoyez-la par email</a>.';ok.hidden=false;b.disabled=false;b.firstChild.textContent='Envoyer ma demande'})});
 
 /* gallery */
 var gal=$('#gal'),gim=$$('.stage img',gal),gli=$$('.gl li',gal),gi=0,gt;
